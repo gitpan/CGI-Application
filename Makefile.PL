@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile
   (
    NAME        => 'CGI::Application',
-   VERSION     => '3.30',
+   VERSION     => '3.31',
    PL_FILES    => {},
    INSTALLDIRS => 'site',
    PREREQ_PM   => {

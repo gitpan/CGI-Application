@@ -4,7 +4,7 @@ package CGI::Application;
 use Carp;
 use strict;
 
-$CGI::Application::VERSION = '3.30';
+$CGI::Application::VERSION = '3.31';
 
 ###################################
 ####  INSTANCE SCRIPT METHODS  ####
