@@ -1,11 +1,10 @@
-# $Id: Application.pm,v 1.8 2000/07/12 03:01:10 jesse Exp $
+# $Id: Application.pm,v 1.10 2000/07/18 21:04:46 jesse Exp $
 
 package CGI::Application;
 
 use strict;
-use vars qw($VERSION);
 
-$VERSION = '1.1';
+$CGI::Application::VERSION = '1.2';
 
 
 use CGI;
@@ -233,11 +232,11 @@ sub header_type {
 
 sub load_tmpl {
 	my $self = shift;
-	my ($tmpl_file) = @_;
+	my ($tmpl_file, @extra_params) = @_;
 
 	my $fq_tmpl_file = $self->tmpl_path() . $tmpl_file;
 
-	my $t = HTML::Template->new_file($fq_tmpl_file);
+	my $t = HTML::Template->new_file($fq_tmpl_file, @extra_params);
 
 	return $t;
 }
@@ -664,9 +663,9 @@ are expected to be called from your Instance Script.
 
 =item new()
 
-The new() method is the constructor for an OOCGI.  It returns a blessed 
-reference to your Application Module package (class).  Optionally, new() 
-may take a set of parameters as key => value pairs:
+The new() method is the constructor for a CGI::Application.  It returns 
+a blessed reference to your Application Module package (class).  Optionally, 
+new() may take a set of parameters as key => value pairs:
 
     my $webapp = App->new(
 		TMPL_PATH => 'App/',
@@ -838,11 +837,26 @@ header section of L<CGI> for details.
     my $tmpl_obj = $webapp->load_tmpl('some.tmpl');
 
 This method takes the name of a template file and returns an 
-HTML::Template object.  Refer to L<HTML::Template> for specific usage.
+HTML::Template object.  The HTML::Template->new_file() constructor
+is used for create the object.  Refer to L<HTML::Template> for specific usage
+of HTML::Template.
 
 If tmpl_path() has been specified, load_tmpl() will prepend the tmpl_path()
 property to the filename provided.  This further assists in encapsulating 
 template usage.
+
+The load_tmpl() method will pass any extra paramaters sent to it directly to 
+HTML::Template->new_file().  This will allow the HTML::Template object to be 
+further customized:
+
+    my $tmpl_obj = $webapp->load_tmpl('some_other.tmpl', 
+         die_on_bad_params => 0,
+         cache => 1
+    );
+
+If your application requires more specialized behavior than this, you are
+encoraged to override load_tmpl() by implementing your own load_tmpl() 
+in your CGI::Application sub-class application module.
 
 
 =item mode_param()
