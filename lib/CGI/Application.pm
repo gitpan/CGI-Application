@@ -1,25 +1,10 @@
-# $Id: Application.pm,v 1.36 2004/02/04 16:42:41 mark Exp $
+# $Id: Application.pm,v 1.38 2004/02/14 02:36:47 mark Exp $
 
 package CGI::Application;
-
+use Carp;
 use strict;
 
-$CGI::Application::VERSION = '3.21';
-
-
-sub import {
-       my $cgicarp = 1;
-       foreach (@_) { $cgicarp = 0 if /^-nocgicarp$/io }
-       if ($cgicarp) {
-               require CGI::Carp;
-               CGI::Carp->import();
-       }
-       else {
-               require Carp;
-               Carp->import();
-       }
-}
-
+$CGI::Application::VERSION = '3.22';
 
 ###################################
 ####  INSTANCE SCRIPT METHODS  ####
@@ -108,7 +93,8 @@ sub run {
 	}
 
 	# If $rm undefined, use default (start) mode
-	my $def_rm = $self->start_mode() || '';
+	my $def_rm = $self->start_mode();
+        $def_rm = '' unless defined $def_rm;
 	$rm = $def_rm unless (defined($rm) && length($rm));
 
 	# Set get_current_runmode() for access by user later
@@ -1626,17 +1612,6 @@ test it and then print your own message to STDOUT. For example
                 print "not ok 11\n";
         }
                                                                                                                                                              
-
-=head2 A Note on CGI::Carp
-
-By default CGI::Application uses CGI::Carp to produce more useful error and
-warning messages. An option is provided to use "Carp" instead, for
-cases where using CGI::Carp might be problematic or undesirable.
-
-To use Carp instead of CGI::Carp, load CGI::Application with this syntax:
-
-  use CGI::Application qw(-nocgicarp);
-
 =head1 COMMUNITY
 
 There a couple of primary resources available for those who wish to learn more
@@ -1685,9 +1660,9 @@ engineering and consulting firm in New York City.  If you are looking
 for a company to develop your web site or individual developers to 
 augment your team please contact us:
 
-    The Erlbaum Group
-    1133 Broadway, suite 1321
-    New York, NY 10010
+    The Erlbaum Group, LLC
+    117 West 28th street, 2nd floor
+    New York, NY 10001
 
     Phone: 212-684-6161
     Fax: 212-684-6226
@@ -1714,6 +1689,10 @@ patches which have helped improve CGI::Application --
     Darin McBride
     Eric Andreychek
     Steve Hay
+    Cees Hek
+    Michael Peters
+    podmaster
+    Brian Cassidy
 
 
 Thanks also to all the members of the CGI-App mailing list!
