@@ -1,10 +1,10 @@
-# $Id: Application.pm,v 1.23 2002/05/06 11:15:35 jesse Exp $
+# $Id: Application.pm,v 1.26 2002/05/26 23:18:46 jesse Exp $
 
 package CGI::Application;
 
 use strict;
 
-$CGI::Application::VERSION = '2.3';
+$CGI::Application::VERSION = '2.4';
 
 
 use CGI;
@@ -67,6 +67,9 @@ sub new {
 		}
 	}
 
+	# Lock prerun_mode from being changed until cgiapp_prerun()
+	$self->{__PRERUN_MODE_LOCKED} = 1;
+
 	# Call cgiapp_init() method, which may be implemented in the sub-class.
 	# Pass all constructor args forward.  This will allow flexible usage 
 	# down the line.
@@ -100,10 +103,27 @@ sub run {
 	my $def_rm = $self->start_mode() || '';
 	$rm = $def_rm unless (defined($rm) && length($rm));
 
+	# Set get_current_runmode() for access by user later
+	$self->{__CURRENT_RUNMODE} = $rm;
+
+	# Allow prerun_mode to be changed
+	delete($self->{__PRERUN_MODE_LOCKED});
+
 	# Call PRE-RUN hook, now that we know the run-mode
 	# This hook can be used to provide run-mode specific behaviors
 	# before the run-mode actually runs.
 	$self->cgiapp_prerun($rm);
+
+	# Lock prerun_mode from being changed after cgiapp_prerun()
+	$self->{__PRERUN_MODE_LOCKED} = 1;
+
+	# If prerun_mode has been set, use it!
+	my $prerun_mode = $self->prerun_mode();
+	if (length($prerun_mode)) {
+		carp ("Replacing previous run-mode '$rm' with prerun_mode '$prerun_mode'") if ($^W);
+		$rm = $prerun_mode;
+		$self->{__CURRENT_RUNMODE} = $rm;
+	}
 
 	my %rmodes = ($self->run_modes());
 
@@ -306,10 +326,23 @@ sub load_tmpl {
 	my $self = shift;
 	my ($tmpl_file, @extra_params) = @_;
 
-	my $fq_tmpl_file = $self->tmpl_path() . $tmpl_file;
+	# add tmpl_path to path array of one is set, otherwise add a path arg
+	if (my $tmpl_path = $self->tmpl_path) {
+	        my $found = 0;
+	        for( my $x = 0; $x < @extra_params; $x += 2 ) {
+		        if ($extra_params[$x] eq 'path' and 
+		            ref $extra_params[$x+1]     and
+		            ref $extra_params[$x+1] eq 'ARRAY') {
+		                unshift @{$extra_params[$x+1]}, $tmpl_path;
+		                $found = 1;
+		                last;
+		        }
+		}
+	    push(@extra_params, path => [ $tmpl_path ]) unless $found;
+	}
 
 	require HTML::Template;
-	my $t = HTML::Template->new_file($fq_tmpl_file, @extra_params);
+	my $t = HTML::Template->new_file($tmpl_file, @extra_params);
 
 	return $t;
 }
@@ -451,6 +484,39 @@ sub tmpl_path {
 }
 
 
+sub prerun_mode {
+	my $self = shift;
+	my ($prerun_mode) = @_;
+
+	# First use?  Create new __PRERUN_MODE
+	$self->{__PRERUN_MODE} = '' unless (exists($self->{__PRERUN_MODE}));
+
+	# Was data provided?
+	if (defined($prerun_mode)) {
+		# Are we allowed to set prerun_mode?
+		if (exists($self->{__PRERUN_MODE_LOCKED})) {
+			# Not allowed!  Throw an exception.
+			croak("prerun_mode() can only be called within cgiapp_prerun()!  Error");
+		} else {
+			# If data is provided, set it!
+			$self->{__PRERUN_MODE} = $prerun_mode;
+		}
+	}
+
+	# If we've gotten this far, return the value!
+	return $self->{__PRERUN_MODE};
+}
+
+
+sub get_current_runmode {
+	my $self = shift;
+
+	# It's OK if we return undef if this method is called too early
+	return $self->{__CURRENT_RUNMODE};
+}
+
+
+
 
 
 ###########################
@@ -500,7 +566,7 @@ Framework for building reusable web-applications
 
 =head1 SYNOPSIS
 
-  # WebApp.pm
+  # In "WebApp.pm"...
   package WebApp;
   use base 'CGI::Application';
   sub setup {
@@ -513,24 +579,13 @@ Framework for building reusable web-applications
 		'mode3' => 'do_something_else'
 	);
   }
-  sub cgiapp_init {
-	my $self = shift;
-	# Optional Pre-setup initalization behaviors
-  }
-  sub cgiapp_prerun {
-	my $self = shift;
-	# Optional Pre-runmode initalization behaviors
-  }
-  sub teardown {
-	my $self = shift;
-	# Optional Post-response shutdown behaviors
-  }
   sub do_stuff { ... }
   sub do_more_stuff { ... }
   sub do_something_else { ... }
+  1;
 
 
-  # webapp.cgi
+  ### In "webapp.cgi"...
   use WebApp;
   my $webapp = WebApp->new();
   $webapp->run();
@@ -682,6 +737,8 @@ As you can see, widgetview.cgi simply "uses" your Application module
 	return $output;
    }
 
+   1;  # Perl requires this at the end of all modules
+
 
 CGI::Application takes care of implementing the new() and the run() 
 methods.  Notice that at no point do you call print() to send any 
@@ -773,12 +830,11 @@ new() may take a set of parameters as key => value pairs:
 
 This method may take some specific parameters:
 
-TMPL_PATH     - This optional parameter adds value to the load_tmpl() 
-method (specified below).  This sets a path which is prepended to 
-all the filenames specified when you call load_tmpl() to get your 
-HTML::Template object.  This run-time parameter allows you to 
-further encapsulate instantiating templates, providing potential 
-for more reusability.
+TMPL_PATH - This optional parameter adds value to the load_tmpl()
+method (specified below).  This sets a path using HTML::Template's
+C<path> option when you call load_tmpl() to get your HTML::Template
+object.  This run-time parameter allows you to further encapsulate
+instantiating templates, providing potential for more reusability.
 
 PARAMS        - This parameter, if used, allows you to set a number 
 of custom parameters at run-time.  By passing in different 
@@ -944,6 +1000,10 @@ a suite of applications could be designed to share certain
 characteristics.  This has the potential for much cleaner code 
 built on object-oriented inheritance.
 
+It is also possible, within your cgiapp_prerun() method, to change the
+run-mode of your application.  This can be done via the prerun_mode()
+method, which is discussed elsewhere in this POD.
+
 
 =back
 
@@ -1020,9 +1080,9 @@ HTML::Template object.  The HTML::Template->new_file() constructor
 is used for create the object.  Refer to L<HTML::Template> for specific usage
 of HTML::Template.
 
-If tmpl_path() has been specified, load_tmpl() will prepend the tmpl_path()
-property to the filename provided.  This further assists in encapsulating 
-template usage.
+If tmpl_path() has been specified, load_tmpl() will set the
+HTML::Template C<path> option to the path provided.  This further
+assists in encapsulating template usage.
 
 The load_tmpl() method will pass any extra paramaters sent to it directly to 
 HTML::Template->new_file().  This will allow the HTML::Template object to be 
@@ -1047,7 +1107,7 @@ The mode_param() method sets the name of the CGI form parameter which contains t
 run mode of the application.  If not specified, the default value is 'rm'.  
 This CGI parameter is queried by the run() method to send the program to the correct mode.
 
-Alternatively you can set mode_param() to use a call-back via subref:
+Alternatively you can set mode_param() to use a call-back via subroutine reference:
 
     $webapp->mode_param(\&some_method);
 
@@ -1224,16 +1284,67 @@ not defined.  Generally, this is the first time your application is executed.
 
     $webapp->tmpl_path('/path/to/some/templates/');
 
-This access/mutator method sets the file path to the directory where the templates 
-are stored.  It is used by load_tmpl() to find the template files.
-
-It is important to make sure your tmpl_path() ends with your operating system's
-directory delimiter ('/' for UNIX, '\' for windows, ':' for Macintosh, etc).  The 
-load_tmpl() method does not try to make sense of the various OS particularities -- 
-it simply prepends tmpl_path() to the file name passed to load_tmpl().
-
+This access/mutator method sets the file path to the directory where
+the templates are stored.  It is used by load_tmpl() to find the
+template files, using HTML::Template's C<path> option.
 
 =back
+
+
+=item prerun_mode()
+
+    $webapp->prerun_mode('new_run_mode');
+
+The prerun_mode() method is an accessor/mutator which can be used within 
+your cgiapp_prerun() method to change the run-mode which is about to be executed.
+For example, consider:
+
+  # In WebApp.pm:
+  package WebApp;
+  use base 'CGI::Application';
+  sub cgiapp_prerun {
+	my $self = shift;
+
+	# Get the web user name, if any
+	my $q = $self->query();
+	my $user = $q->remote_user();
+
+	# Redirect to login, if necessary
+	unless ($user) {
+		$self->prerun_mode('login');
+	}
+  }
+
+
+In this example, the web user will be forced into the "login" run-mode
+unless they have aleady logged in.  The prerun_mode() method permits
+a scalar text string to be set which overrides whatever the run-mode
+would otherwise be.
+
+The use of prerun_mode() within cgiapp_prerun() differs from setting 
+mode_param() to use a call-back via subroutine reference.  It differs 
+because cgiapp_prerun() allows you to selectively set the run-mode based 
+on some logic in your cgiapp_prerun() method.  The call-back facility of 
+mode_param() forces you to entirely replace CGI::Application's mechanism 
+for determining the run-mode with your own method.  The prerun_mode()
+method should be used in cases where you want to use CGI::Application's
+normal run-mode switching facility, but you want to make selective
+changes to the mode under specific conditions.
+
+B<Note:>  The prerun_mode() method may ONLY be called in the context of
+a cgiapp_prerun() method.  Your application will die() if you call 
+prerun_mode() elsewhere, such as in setup() or a run-mode method.
+
+
+
+=item get_current_runmode()
+
+    $webapp->get_current_runmode();
+
+The get_current_runmode() method will return a text scalar containing
+the name of the run-mode which is currently being executed.  If the 
+run-mode has not yet been determined, such as during setup(), this method
+will return undef.
 
 
 
@@ -1284,7 +1395,8 @@ patches which have helped improve CGI::Application --
 
     Stephen Howard
     Mark Stosberg
-
+    Steve Comrie
+    
 
 Thanks also to all the members of the CGI-App mailing list!
 Your ideas, suggestions, insights (and criticism!) have helped
