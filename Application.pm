@@ -1,16 +1,13 @@
-# $Id: Application.pm,v 1.27 2002/07/18 11:50:20 jesse Exp $
+# $Id: Application.pm,v 1.29 2002/10/07 00:09:18 jesse Exp $
 
 package CGI::Application;
 
 use strict;
 
-$CGI::Application::VERSION = '2.5';
+$CGI::Application::VERSION = '2.6';
 
 
-use CGI;
 use CGI::Carp;
-
-
 
 
 ###################################
@@ -142,19 +139,8 @@ sub run {
 	}
 
 	# Process run mode!
-	my $body;
-	if (ref($rmeth) eq 'CODE') {
-		if ($autoload_mode) {
-			$body = $rmeth->($self, $rm);
-		} else {
-			$body = $rmeth->($self);
-		}
-	} else {
-		my $meth_call = '$self->' . $rmeth;
-		$meth_call .= '($rm)' if ($autoload_mode);
-		$body = eval($meth_call);
-		die ("Error executing run mode '$rm'.  Eval of code '$meth_call' resulted in error: " . $@) if ($@);
-	}
+        my $body = eval { $autoload_mode ? $self->$rmeth($rm) : $self->$rmeth() };
+        die "Error executing run mode '$rm': $@" if $@;
 
 	# Set up HTTP headers
 	my $headers = $self->_send_headers();
@@ -186,6 +172,19 @@ sub run {
 ############################
 ####  OVERRIDE METHODS  ####
 ############################
+
+sub cgiapp_get_query {
+	my $self = shift;
+
+	# Include CGI.pm and related modules
+	require CGI;
+
+	# Get the query object
+	my $q = CGI->new();
+
+	return $q;
+}
+
 
 sub cgiapp_init {
 	my $self = shift;
@@ -412,7 +411,7 @@ sub query {
 		if (defined($query) && $query->isa('CGI')) {
 			$new_query_obj = $query;
 		} else {
-			$new_query_obj = CGI->new();
+			$new_query_obj = $self->cgiapp_get_query();
 		}
 
 		$self->{__QUERY_OBJ} = $new_query_obj;
@@ -1005,6 +1004,31 @@ run-mode of your application.  This can be done via the prerun_mode()
 method, which is discussed elsewhere in this POD.
 
 
+=item cgiapp_get_query()
+
+This method is called when CGI::Application retrieves the CGI query object.
+The cgiapp_get_query() method loads CGI.pm via "require" and returns a 
+CGI.pm query object.  The implementation is as follows:
+
+  sub cgiapp_get_query {  
+        my $self = shift;
+
+        # Include CGI.pm and related modules
+        require CGI;
+
+        # Get the query object
+        my $q = CGI->new();
+
+        return $q;
+  }
+
+You may override this method if you wish to use a different query 
+interface instead of CGI.pm.  Note, however, that your query interface 
+must be compatible with CGI.pm, or you must wrap your chosen query
+interface in a "wrapper" class to achieve compatibility.
+
+
+
 =back
 
 
@@ -1222,8 +1246,9 @@ from the parent class.
 
 An advantage of specifying your run-mode methods by reference instead of by name 
 is performance.  Dereferencing a subref is faster than eval()-ing 
-a code block.  If run-time performance is a significant issue, specify
-your run-mode methods by reference and not by name.
+a code block.  If run-time performance is a critical issue, specify
+your run-mode methods by reference and not by name.  The speed differences
+are generally small, however, so specifying by name is preferred.
 
 The run_modes() method may be called more than once.  Additional values passed 
 into run_modes() will be added to the run-modes table.  In the case that an 
@@ -1253,7 +1278,7 @@ a run-mode with the reserved name "AUTOLOAD":
 	"AUTOLOAD" => \&catch_my_exception
   );
 
-Before CGI::Application called croak() it will check for the existance 
+Before CGI::Application calls croak() it will check for the existance 
 of a run-mode called "AUTOLOAD".  If specified, this run-mode will in 
 involked just like a regular run-mode, with one exception:  It will 
 receive, as an argument, the name of the run-mode which involked it:
@@ -1410,7 +1435,9 @@ patches which have helped improve CGI::Application --
     Stephen Howard
     Mark Stosberg
     Steve Comrie
-    
+    Darin McBride
+    Eric Andreychek
+
 
 Thanks also to all the members of the CGI-App mailing list!
 Your ideas, suggestions, insights (and criticism!) have helped
