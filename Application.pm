@@ -1,15 +1,14 @@
-# $Id: Application.pm,v 1.13 2001/05/28 18:22:00 jesse Exp $
+# $Id: Application.pm,v 1.15 2001/06/25 03:01:19 jesse Exp $
 
 package CGI::Application;
 
 use strict;
 
-$CGI::Application::VERSION = '1.31';
+$CGI::Application::VERSION = '2.0';
 
 
 use CGI;
 use CGI::Carp;
-use HTML::Template;
 
 
 
@@ -85,19 +84,49 @@ sub run {
 	my $q = $self->query();
 
 	my $rm_param = $self->mode_param() || croak("No rm_param() specified");
+
+	my $rm;
+
+	# Support call-back instead of CGI mode param
+	if (ref($rm_param) eq 'CODE') {
+		# Get run-mode from subref
+		$rm = $rm_param->($self);
+	} else {
+		# Get run-mode from CGI param
+		$rm = $q->param($rm_param);
+	}
+
+	# If $rm undefined, use default (start) mode
 	my $def_rm = $self->start_mode() || '';
-	my $rm = $q->param($rm_param) || $def_rm;
+	$rm = $def_rm unless (defined($rm));
 
 	my %rmodes = ($self->run_modes());
-	my $rmeth = $rmodes{$rm}
-		|| croak("No function specified for run mode '$rm'");
+
+	my $rmeth;
+	my $autoload_mode = 0;
+	if (exists($rmodes{$rm})) {
+		$rmeth = $rmodes{$rm};
+	} else {
+		# Look for run-mode "AUTOLOAD" before dieing
+		unless (exists($rmodes{'AUTOLOAD'})) {
+			croak("No such run-mode '$rm'");
+		}
+		carp ("No such run-mode '$rm'.  Using run-mode 'AUTOLOAD'") if ($^W);
+		$rmeth = $rmodes{'AUTOLOAD'};
+		$autoload_mode = 1;
+	}
 
 	# Process run mode!
 	my $body;
 	if (ref($rmeth) eq 'CODE') {
-		$body = $rmeth->($self);
+		if ($autoload_mode) {
+			$body = $rmeth->($self, $rm);
+		} else {
+			$body = $rmeth->($self);
+		}
 	} else {
 		my $meth_call = '$self->' . $rmeth;
+		$meth_call .= '($rm)' if ($autoload_mode);
 		$body = eval($meth_call);
 		die ("Error executing run mode '$rm'.  Eval of code '$meth_call' resulted in error: " . $@) if ($@);
 	}
@@ -106,7 +135,14 @@ sub run {
 	my $headers = $self->_send_headers();
 
 	# Build up total output
-	my $output = $headers . $body;
+	my $output = $headers;
+
+	# Support return as SCALARREF
+	if (ref($body) eq 'SCALAR') {
+		$output .= $$body;
+	} else {
+		$output .= $body;
+	}
 
 	# Send output to browser (unless we're in serious debug mode!)
 	unless ($ENV{CGI_APP_RETURN_ONLY}) {
@@ -258,6 +294,7 @@ sub load_tmpl {
 
 	my $fq_tmpl_file = $self->tmpl_path() . $tmpl_file;
 
+	require HTML::Template;
 	my $t = HTML::Template->new_file($fq_tmpl_file, @extra_params);
 
 	return $t;
@@ -934,6 +971,24 @@ The mode_param() method sets the name of the CGI form parameter which contains t
 run mode of the application.  If not specified, the default value is 'rm'.  
 This CGI parameter is queried by the run() method to send the program to the correct mode.
 
+Alternatively you can set mode_param() to use a call-back via subref:
+
+    $webapp->mode_param(\&some_method);
+
+This would allow you to create an instance method whose output would
+be used as the value of the current run-mode.  E.g., a "mode param method":
+
+    sub some_method {
+      my $self = shift;
+      return 'run_mode_x';
+    }
+
+This would allow you to programmatically set the run-mode based on something 
+besides the value of a CGI parameter -- $ENV{PATH_INFO}, for example.
+
+(Thanks to Stephen Howard for this idea!)
+
+
 
 =item param()
 
@@ -994,38 +1049,40 @@ method supports passing in your existing query object on construction.
     $webapp->run_modes('mode1' => 'some_sub_by_name', 'mode2' => \&some_other_sub_by_ref);
 
 This accessor/mutator expects a hash which specifies the dispatch table for the 
-different CGI states.  The run method uses the data in this table 
+different CGI states.  The run() method uses the data in this table 
 to send the CGI to the correct function as determined by reading 
-the CGI parameter specified by mode_param() (defaults to 'rm' for "Run 
-Mode").
+the CGI parameter specified by mode_param() (defaults to 'rm' for "Run-Mode").  
+These functions are referred to as "run-mode methods".
 
 The hash table set by this method is expected to contain the mode 
-name as a key.  The value should be either a hard reference to the function which 
-you want to be called when the CGI enters the specified mode, or the 
-name of the function to be called:
+name as a key.  The value should be either a hard reference (a subref) 
+to the run-mode method which you want to be called when the CGI enters 
+the specified run-mode, or the name of the run-mode method to be called:
 
     'mode_name_by_ref'  => \&mode_function
     'mode_name_by_name' => 'mode_function'
 
-The function specified is expected to return a block of text which 
-will eventually be sent back to the web browser.
+The run-mode method specified is expected to return a block of text 
+(e.g.: HTML) which will eventually be sent back to the web browser.  
+The your run-mode method may return its block of text as a scalar 
+or a scalar-ref.
 
-An advantage of specifying your run mode functions by name instead of 
+An advantage of specifying your run-mode methods by name instead of 
 by reference is that you can more easily create derivative application 
 using inheritance.  For instance, if you have a new application which is
 exactly the same as an existing application with the exception of one
-run mode, you could simply inherit from that other application and override
-the run mode function which is different.  If you specified your run mode 
-functions by reference, your child class would still use the function
+run-mode, you could simply inherit from that other application and override
+the run-mode method which is different.  If you specified your run-mode 
+method by reference, your child class would still use the function
 from the parent class.
 
-An advantage of specifying your run modes by reference instead of by name 
+An advantage of specifying your run-mode methods by reference instead of by name 
 is performance.  Dereferencing a subref is faster than eval()-ing 
 a code block.  If run-time performance is a significant issue, specify
-your run mode functions by reference and not by name.
+your run-mode methods by reference and not by name.
 
 
-B<IMPORTANT NOTE ABOUT RUN MODE FUNCTIONS>
+B<IMPORTANT NOTE ABOUT RUN-MODE METHODS>
 
 Your application should *NEVER* print() to STDOUT.
 Using print() to send output to STDOUT (including HTTP headers) is 
@@ -1033,6 +1090,33 @@ exclusively the domain of the inherited run() method.  Breaking this
 rule is a common source of errors.  If your program is erroneously 
 sending content before your HTTP header, you are probably breaking this rule.
 
+
+B<THE RUN-MODE OF LAST RESORT: "AUTOLOAD">
+
+If CGI::Application is asked to go to a run-mode which doesn't exist
+if will usually croak() with errors.  If this is not your desired 
+behavior, it is possible to catch this exception by implementing 
+a run-mode with the reserved name "AUTOLOAD":
+
+  $self->run_modes(
+	"AUTOLOAD" => \&catch_my_exception
+  );
+
+Before CGI::Application called croak() it will check for the existance 
+of a run-mode called "AUTOLOAD".  If specified, this run-mode will in 
+involked just like a regular run-mode, with one exception:  It will 
+receive, as an argument, the name of the run-mode which involked it:
+
+  sub catch_my_exception {
+	my $self = shift;
+	my $intended_runmode = shift;
+
+	my $output = "Looking for '$intended_runmode', but found 'AUTOLOAD' instead";
+	return $output;
+  } 
+
+This functionality could be used for a simple human-readable error 
+screen, or for more sophisticated application behaviors.
 
 
 =item start_mode()
