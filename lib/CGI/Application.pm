@@ -4,8 +4,15 @@ package CGI::Application;
 use Carp;
 use strict;
 
-$CGI::Application::VERSION = '3.31';
+$CGI::Application::VERSION = '4.0_2';
 
+our %DEFAULT_HOOKS = (
+                      prerun   => 'cgiapp_prerun',
+                      postrun  => 'cgiapp_postrun',
+                      teardown => 'teardown',
+);
+
+our @VALID_POSITIONS = qw( REALLY_FIRST FIRST MIDDLE LAST REALLY_LAST );
 ###################################
 ####  INSTANCE SCRIPT METHODS  ####
 ###################################
@@ -31,6 +38,10 @@ sub new {
 	$self->header_type('header');
 	$self->mode_param('rm');
 	$self->start_mode('start');
+
+  # Setup the default hooks and register the default callbacks
+  $self->new_hook($_) foreach keys %DEFAULT_HOOKS;
+  $self->add_callback($_ => $DEFAULT_HOOKS{$_}) foreach keys %DEFAULT_HOOKS;
 
 	# Process optional new() parameters
 	my $rprops;
@@ -66,7 +77,7 @@ sub new {
 	# Call cgiapp_init() method, which may be implemented in the sub-class.
 	# Pass all constructor args forward.  This will allow flexible usage 
 	# down the line.
-	$self->cgiapp_init(@args);
+  $self->cgiapp_init(@args);
 
 	# Call setup() method, which should be implemented in the sub-class!
 	$self->setup();
@@ -74,6 +85,54 @@ sub new {
 	return $self;
 }
 
+sub add_callback {
+  my $self = shift;
+  my $hook = lc shift;
+  my $callback = shift;
+  my $position = uc shift || 'MIDDLE';
+
+  # DONTCARE is a synonym for MIDDLE
+  $position = 'MIDDLE' if $position eq 'DONTCARE';
+  
+  # First use?  Create new __HOOKS!
+  unless (exists($self->{__HOOKS})) {
+    $self->{__HOOKS} = {};
+  }
+
+  die "no callback provided when calling add_callback" unless $callback;
+  die "Unknown hook ($hook)" unless $self->{__HOOKS}->{$hook};
+  die "Unknown position ($position)" unless grep { $_ eq $position } @VALID_POSITIONS;
+  die "There is already a callback registered using ".$position." at the ".$hook." stage"
+          if $position =~ /^REALLY_/ && @{ $self->{__HOOKS}->{$hook}->{$position} };
+
+  push @{ $self->{__HOOKS}->{$hook}->{$position} }, $callback;
+}
+
+sub new_hook {
+  my $self = shift;
+  my $hook = shift;
+
+  # First use?  Create new __HOOKS!
+  unless (exists($self->{__HOOKS})) {
+    $self->{__HOOKS} = {};
+  }
+
+  $self->{__HOOKS}->{$hook} = {};
+  return 1;
+}
+
+sub call_hook {
+  my $self= shift;
+  my $hook= shift;
+
+  foreach my $position ( @VALID_POSITIONS ) {
+    next unless $self->{__HOOKS}->{$hook} && $self->{__HOOKS}->{$hook}->{$position};
+    foreach my $callback ( @{ $self->{__HOOKS}->{$hook}->{$position} } ) {
+      eval { $self->$callback(@_); };
+      die "Error executing callback in $hook stage: $@" if $@;
+    }
+  }
+}
 
 sub run {
 	my $self = shift;
@@ -111,7 +170,8 @@ sub run {
 	# Call PRE-RUN hook, now that we know the run mode
 	# This hook can be used to provide run mode specific behaviors
 	# before the run mode actually runs.
-	$self->cgiapp_prerun($rm);
+  #$self->cgiapp_prerun($rm);
+ 	$self->call_hook('prerun', $rm);
 
 	# Lock prerun_mode from being changed after cgiapp_prerun()
 	$self->{__PRERUN_MODE_LOCKED} = 1;
@@ -159,7 +219,8 @@ sub run {
     my $bodyref = (ref($body) eq 'SCALAR') ? $body : \$body;
 
     # Call cgiapp_postrun() hook
-    $self->cgiapp_postrun($bodyref);
+    #$self->cgiapp_postrun($bodyref);
+    $self->call_hook('postrun', $bodyref);
 
 	# Set up HTTP headers
 	my $headers = $self->_send_headers();
@@ -174,7 +235,8 @@ sub run {
 	}
 
 	# clean up operations
-	$self->teardown();
+	#$self->teardown();
+  $self->call_hook('teardown');
 
 	return $output;
 }
@@ -965,7 +1027,7 @@ croak().
  
 If the runmode dies for whatever reason, run() will see if you have set a
 value for error_mode(). If you have, run() will call that method 
-as a run mode.
+as a run mode, passing $@ as the only parameter.
 
 =back
 
@@ -1273,6 +1335,8 @@ previously set.
 To add additional headers later without clobbering the old ones,
 see L<header_add()>.
 
+header_props() return a hash of all the headers that have currently 
+been set.
 
 B<IMPORTANT NOTE REGARDING HTTP HEADERS>
 
@@ -1437,12 +1501,13 @@ sub mode_param {
 		%p = @_;
 		$mode_param = $p{param};
 
-		if ($p{path_info}) {
-			my $pi = $ENV{PATH_INFO};
+		if ( $p{path_info} && $self->query->path_info() ) {
+			my $pi = $self->query->path_info();
+
 			# computer scientists like to start counting from zero. 
 			my $idx = $p{path_info} - 1;
 
-			# remove the leading slash
+			# remove the leading slash
 			$pi =~ s!^/!!;
 
 			# grab the requested field location
@@ -1751,6 +1816,10 @@ L<CGI::Application::Plugin::DBH> - Integration with DBI.
 
 L<CGI::Application::Plugin::Session> - Integration with L<CGI::Session>
 
+=item *
+
+L<CGI::Application::Plugin::Stream> - Help stream files to the browser
+
 =item * 
 
 L<CGI::Application::Plugin::TT> - Use L<Template::Toolkit> as an alternative to HTML::Template.
@@ -1770,14 +1839,94 @@ Writing plug-ins is simple. Simply create a new package, and export the
 methods that you want to become part of a CGI::Application project. See
 L<CGI::Application::Plugin::ValidateRM> for an example.
 
-You only need to keep in mind that your extension should "play well with
-others". The method names exported should be unique. Also, additions to
-the CGI::Application object should be designed not to conflict with other
-potentional plug-ins. For that reason, it's recommended that you add a
-a hash key to the CGI::Application which reflects the name of your
-plug-in, such as:
+In order to avoid namespace conflicts within a CGI::Application object,
+plugin developers are recommended to use a unique prefix, such as the
+name of plugin package, when storing information. For instance:
 
- $self->{'Config::Simple'}
+ $app->{__PARAM} = 'foo'; # BAD! Could conflict.
+ $app->{'MyPlugin::Module::__PARAM'} = 'foo'; # Good.
+ $app->{'MyPlugin::Module'}{__PARAM} = 'foo'; # Good.
+
+=head2 Writing Advanced Plug-ins - Using callbacks
+
+When writing a plug-in, you may want some action to happen automatically at a
+particular stage, such as setting up a database connection or initializing a
+session. By using these 'callback' methods, you can register a subroutine 
+to run at a particular phase, accomplishing this goal.
+
+B<Callback Examples>
+
+  # register a callback to the standard CGI::Application hooks
+  #   one of 'init', 'prerun', 'postrun' or 'teardown'
+  # As a plug-in author, this probably the only method you need. 
+
+  $self->add_callback('prerun', \&callback);
+  $self->add_callback('teardown', \&callback, 'FIRST');
+
+
+  # If you want to create a new hook location in your application,
+  # You'll need to know about the following two methods to create
+  # the hook and call it. 
+
+  # Create a new hook
+  $self->new_hook('pretemplate');
+  
+  # Then later execute all the callbacks registered at this hook
+  $self->call_hook('pretemplate');
+
+B<Callback Methods>
+
+=over 4
+
+=item add_callback(HOOK, CALLBACK, ORDER)
+
+    $self->add_callback('teardown', \&callback, 'FIRST');
+
+The add_callback method allows you to register a callback
+function that is to be called at the given stage of execution.
+Valid hooks include 'prerun', 'postrun' and 'teardown',
+and possible a new hook defined using the new_hook method.
+
+The callback should be a reference to a subroutine.  The order
+is optional, and gives an indication of the order in which the
+callbacks should be executed.  Valid values for the order are
+'FIRST', 'DONTCARE' (default), 'LAST', and two special orders
+'REALLY_FIRST' and 'REALLY_LAST'.  If multiple callbacks are
+added to the same order for the same hook, they will be executed
+in the order they were registered.  The REALLY_FIRST and REALLY_LAST
+orders can only be used once per hook and should only be used in 
+special circumstances where it is critical that the method should be
+executed first or last.
+
+'MIDDLE' is available as a synonym for DONTCARE.
+
+
+=item new_hook(HOOK)
+
+    $self->new_hook('pretemplate');
+
+The new_hook method can be used to create a new hook location.  This
+can be a new stage for developers to register new callbacks.  It works
+in conjunction with call_hook which will execute the callbacks registered
+at the new hook.
+
+It can be useful for plugin authors who want to create a new hook for developers
+to use.  See the L<CGI::Application::Plugin::TT> for an example of a new
+hook that is executed before and after every template that is processed.
+
+=item call_hook(HOOK)
+
+    $self->call_hook('pretemplate');
+
+The call_hook method is used to executed the callbacks that have been registered
+at the given hook.  It is used in conjunction with the new_hook method which
+allows you to create a new hook location.
+
+=back
+
+=cut
+
+
 
 =head1 COMMUNITY
 
