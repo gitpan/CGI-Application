@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: CGI-Application
-version: 4.01_01
+version: 4.01
 author:
   - Jesse Erlbaum <jesse@erlbaum.net>
 abstract: Framework for building reusable web-applications
@@ -14,7 +14,7 @@ requires:
 provides:
   CGI::Application:
     file: lib/CGI/Application.pm
-    version: 4.01_01
+    version: 4.01
   CGI::Application::Mailform:
     file: lib/CGI/Application/Mailform.pm
 generated_by: Module::Build version 0.2606
