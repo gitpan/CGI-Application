@@ -3,7 +3,7 @@ use Carp;
 use strict;
 use Class::ISA;
 
-$CGI::Application::VERSION = '4.04_02';
+$CGI::Application::VERSION = '4.04';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -604,6 +604,9 @@ sub _send_headers {
 
 
 # Make all hash keys CAPITAL
+# although this method is internal, some other extensions
+# have come to rely on it, so any changes here should be
+# made with great care or avoided. 
 sub _cap_hash {
 	my $self = shift;
 	my $rhash = shift;
