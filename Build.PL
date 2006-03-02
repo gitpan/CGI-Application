@@ -5,7 +5,8 @@ my $build = Module::Build->new
    module_name => 'CGI::Application',
    license => 'perl',
    requires => {
-       'CGI'            => 0, 
+       # For Moved vs Found change
+       'CGI'            => 3.16, 
        'HTML::Template' => 0,
        'Test::More'     => 0.47,
 	   'Carp'		    => 0,
@@ -14,6 +15,9 @@ my $build = Module::Build->new
    'dist_author'        => 'Jesse Erlbaum <jesse@erlbaum.net>',
    'dist_abstract'      => 'Framework for building reusable web-applications',
    create_makefile_pl   => 'traditional',
+   meta_add             => {
+        no_index =>  { file => [ <test/*.pm> ] }, 
+   },
   );
 
 $build->create_build_script;
