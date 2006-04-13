@@ -5,7 +5,7 @@ WriteMakefile
           'NAME' => 'CGI::Application',
           'VERSION_FROM' => 'lib/CGI/Application.pm',
           'PREREQ_PM' => {
-                           'CGI' => '3.16',
+                           'CGI' => '0',
                            'Carp' => '0',
                            'Class::ISA' => '0',
                            'HTML::Template' => '0',
