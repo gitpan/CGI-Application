@@ -1,9 +1,9 @@
 package CGI::Application;
 use Carp;
 use strict;
-use Class::ISA;
+use metaclass;
 
-$CGI::Application::VERSION = '4.06';
+$CGI::Application::VERSION = '4.07_01';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -12,7 +12,7 @@ my %INSTALLED_CALLBACKS = (
 	postrun   => { 'CGI::Application' => [ 'cgiapp_postrun' ] },
 	teardown  => { 'CGI::Application' => [ 'teardown'       ] },
 	load_tmpl => { },
-    error     => { },
+	error     => { },
 );
 
 ###################################
@@ -32,14 +32,14 @@ sub new {
 	my $self = {};
 	bless($self, $class);
 
-    ### SET UP DEFAULT VALUES ###
-    #
-    # We set them up here and not in the setup() because a subclass
-    # which implements setup() still needs default values!
-
-    $self->header_type('header');
-    $self->mode_param('rm');
-    $self->start_mode('start');
+	### SET UP DEFAULT VALUES ###
+	#
+	# We set them up here and not in the setup() because a subclass
+	# which implements setup() still needs default values!
+	
+	$self->header_type('header');
+	$self->mode_param('rm');
+	$self->start_mode('start');
 
 	# Process optional new() parameters
 	my $rprops;
@@ -83,14 +83,11 @@ sub new {
 	return $self;
 }
 
-sub run {
-	my $self = shift;
-	my $q = $self->query();
-
-	my $rm_param = $self->mode_param() || croak("No rm_param() specified");
+sub __get_runmode {
+	my $self     = shift;
+	my $rm_param = shift;
 
 	my $rm;
-
 	# Support call-back instead of CGI mode param
 	if (ref($rm_param) eq 'CODE') {
 		# Get run mode from subref
@@ -102,13 +99,70 @@ sub run {
 	}
 	# Get run mode from CGI param
 	else {
-		$rm = $q->param($rm_param);
+		$rm = $self->query->param($rm_param);
 	}
 
 	# If $rm undefined, use default (start) mode
-	my $def_rm = $self->start_mode();
-	$def_rm = '' unless defined $def_rm;
-	$rm = $def_rm unless (defined($rm) && length($rm));
+	$rm = $self->start_mode unless defined($rm) && length($rm);
+
+	return $rm;
+}
+
+sub __get_runmeth {
+	my $self = shift;
+	my $rm   = shift;
+
+	my $rmeth;
+
+	my %rmodes = ($self->run_modes());
+	if (exists($rmodes{$rm})) {
+		$rmeth = $rmodes{$rm};
+	} else {
+		# Look for run mode "AUTOLOAD" before dieing
+		unless (exists($rmodes{'AUTOLOAD'})) {
+			croak("No such run mode '$rm'");
+		}
+		$rmeth = $rmodes{'AUTOLOAD'};
+	}
+
+	return $rmeth;
+}
+
+sub __get_body {
+	my $self  = shift;
+	my $rm    = shift;
+
+	my $rmeth = $self->__get_runmeth($rm);
+
+	my $body;
+	eval {
+		# Prior to my refactoring, we only passed $rm to $rmeth if it was
+		# autoloaded.
+		$body = $self->$rmeth($rm);
+	};
+	if ($@) {
+		my $error = $@;
+		$self->call_hook('error', $error);
+		if (my $em = $self->error_mode) {
+			$body = $self->$em( $error );
+		} else {
+			croak("Error executing run mode '$rm': $error");
+		}
+	}
+
+	# Make sure that $body is not undefined (supress 'uninitialized value'
+	# warnings)
+	return defined $body ? $body : '';
+}
+
+
+sub run {
+	my $self = shift;
+	my $q = $self->query();
+
+	my $rm_param = $self->mode_param();
+
+	my $rm = $self->__get_runmode($rm_param);
 
 	# Set get_current_runmode() for access by user later
 	$self->{__CURRENT_RUNMODE} = $rm;
@@ -131,51 +185,20 @@ sub run {
 		$self->{__CURRENT_RUNMODE} = $rm;
 	}
 
-	my %rmodes = ($self->run_modes());
-
-	my $rmeth;
-	my $autoload_mode = 0;
-	if (exists($rmodes{$rm})) {
-		$rmeth = $rmodes{$rm};
-	} else {
-		# Look for run mode "AUTOLOAD" before dieing
-		unless (exists($rmodes{'AUTOLOAD'})) {
-			croak("No such run mode '$rm'");
-		}
-		$rmeth = $rmodes{'AUTOLOAD'};
-		$autoload_mode = 1;
-	}
-
 	# Process run mode!
-	my $body;
-	eval {
-		$body = $autoload_mode ? $self->$rmeth($rm) : $self->$rmeth();
-	};
-	if ($@) {
-		my $error = $@;
-        $self->call_hook('error', $error);
-		if (my $em = $self->error_mode) {
-			$body = $self->$em( $error );
-		} else {
-		croak("Error executing run mode '$rm': $error");
-		}
-	}
-
-	# Make sure that $body is not undefined (supress 'uninitialized value' warnings)
-	$body = "" unless defined $body;
+	my $body = $self->__get_body($rm);
 
 	# Support scalar-ref for body return
-	my $bodyref = (ref($body) eq 'SCALAR') ? $body : \$body;
+	$body = $$body if ref $body eq 'SCALAR';
 
 	# Call cgiapp_postrun() hook
-	$self->call_hook('postrun', $bodyref);
+	$self->call_hook('postrun', \$body);
 
 	# Set up HTTP headers
 	my $headers = $self->_send_headers();
 
 	# Build up total output
-	my $output  = $headers.$$bodyref;
-
+	my $output  = $headers.$body;
 
 	# Send output to browser (unless we're in serious debug mode!)
 	unless ($ENV{CGI_APP_RETURN_ONLY}) {
@@ -187,8 +210,6 @@ sub run {
 
 	return $output;
 }
-
-
 
 
 ############################
@@ -431,8 +452,9 @@ sub param {
 sub delete {
 	my $self = shift;
 	my ($param) = @_;
-	#return undef it it isn't defined
-	return undef if(!defined($param));
+
+	# return undef it the param name isn't given
+	return undef unless defined $param;
 
 	#simply delete this param from $self->{__PARAMS}
 	delete $self->{__PARAMS}->{$param};
@@ -1597,7 +1619,7 @@ sub mode_param {
 	}
 
 	# If data is provided, set it
-	if (defined($mode_param)) {
+	if (defined $mode_param and length $mode_param) {
 		$self->{__MODE_PARAM} = $mode_param;
 	}
 
@@ -2163,7 +2185,7 @@ sub call_hook {
 	# Next, run callbacks installed in class hierarchy
 
 	# Cache this value as a performance boost
-	$self->{__CALLBACK_CLASSES} ||=  [ Class::ISA::self_and_super_path($app_class) ];
+	$self->{__CALLBACK_CLASSES} ||=  [ $app_class->meta->class_precedence_list ];
 
 	# Get list of classes that the current app inherits from
 	foreach my $class (@{ $self->{__CALLBACK_CLASSES} }) {

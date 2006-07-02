@@ -1,9 +1,7 @@
-# $Id: TestApp3.pm,v 1.2 2001/08/11 18:43:47 jesse Exp $
 
 package TestApp3;
 
 use strict;
-
 
 use CGI::Application;
 @TestApp3::ISA = qw(CGI::Application);
@@ -18,7 +16,8 @@ sub setup {
 
 	$self->run_modes(
 		'subref_modeparam'	=> \&subref_modeparam_meth,
-		'0'			=> \&blank_mode,
+		'0'			=> \&zero_mode,
+		''			=> \&blank_mode,
 		'default_mode'		=> \&default_mode_meth,
 	);
 }
@@ -52,6 +51,13 @@ sub blank_mode {
 	my $self = shift;
 
 	return "Hello World: blank_mode OK";
+}
+
+
+sub zero_mode {
+	my $self = shift;
+
+	return "Hello World: zero_mode OK";
 }
 
 

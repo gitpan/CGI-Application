@@ -10,9 +10,13 @@ my $build = Module::Build->new
        'HTML::Template' => 0,
        'Test::More'     => 0.47,
 	   'Carp'		    => 0,
-       'Class::ISA'     => 0,
+       'Class::MOP'     => 0,
        },
-   'dist_author'        => 'Jesse Erlbaum <jesse@erlbaum.net>',
+   'dist_author'        => [
+            'Jesse Erlbaum <jesse@erlbaum.net>',
+            'Mark Stosberg <mark@summersault.com>',
+            'with the help of many others!' 
+            ],
    'dist_abstract'      => 'Framework for building reusable web-applications',
    create_makefile_pl   => 'traditional',
    meta_add             => {
