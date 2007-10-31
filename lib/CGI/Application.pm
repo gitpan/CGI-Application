@@ -1,9 +1,9 @@
 package CGI::Application;
 use Carp;
 use strict;
-use metaclass;
+use Class::ISA;
 
-$CGI::Application::VERSION = '4.07_01';
+$CGI::Application::VERSION = '4.07_02';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -150,7 +150,7 @@ sub __get_body {
 		}
 	}
 
-	# Make sure that $body is not undefined (supress 'uninitialized value'
+	# Make sure that $body is not undefined (suppress 'uninitialized value'
 	# warnings)
 	return defined $body ? $body : '';
 }
@@ -357,7 +357,9 @@ sub _header_props_update {
 
 	# If data is provided, set it!
 	if (scalar(@data)) {
-		warn("header_props called while header_type set to 'none', headers will NOT be sent!") if $self->header_type eq 'none';
+        if ($self->header_type eq 'none') {
+		    warn "header_props called while header_type set to 'none', headers will NOT be sent!" 
+        }
 		# Is it a hash, or hash-ref?
 		if (ref($data[0]) eq 'HASH') {
 			# Make a copy
@@ -607,21 +609,14 @@ sub get_current_runmode {
 
 sub _send_headers {
 	my $self = shift;
-	my $q = $self->query();
+	my $q    = $self->query;
+	my $type = $self->header_type;
 
-	my $header_type = $self->header_type();
-
-	if ($header_type eq 'redirect') {
-		return $q->redirect($self->header_props());
-	} elsif ($header_type eq 'header' ) {
-		return $q->header($self->header_props());
-	}
-
-	# croak() if we have an unknown header type
-	croak ("Invalid header_type '$header_type'") unless ($header_type eq "none");
-
-	# Do nothing if header type eq "none".
-	return "";
+    return
+        $type eq 'redirect' ? $q->redirect( $self->header_props )
+      : $type eq 'header'   ? $q->header  ( $self->header_props )
+      : $type eq 'none'     ? ''
+      : croak "Invalid header_type '$type'"
 }
 
 
@@ -868,7 +863,7 @@ in persistent environments without modification.
 
 For more information on using CGI::Application with mod_perl, please see our
 website at http://www.cgi-app.org/, as well as
-L<CGI::Application::Plugin::Apache>, which integates with L<Apache::Request>.
+L<CGI::Application::Plugin::Apache>, which integrates with L<Apache::Request>.
 
 =head1 DESCRIPTION
 
@@ -1013,7 +1008,7 @@ setup() method should be used to define the following property/methods:
     start_mode() - text scalar containing the default run mode.
     error_mode() - text scalar containing the error mode.
     run_modes() - hash table containing mode => function mappings.
-    tmpl_path() - text scalar or array refefence containing path(s) to template files.
+    tmpl_path() - text scalar or array reference containing path(s) to template files.
 
 Your setup() method may call any of the instance methods of your application.
 This function is a good place to define properties specific to your application
@@ -1178,11 +1173,11 @@ cgiapp_postrun() method might be implemented as follows:
 
 Obviously, with access to the CGI-App object you have full access to use all
 the methods normally available in a run mode.  You could, for example, use
-load_tmpl() to replace the static HTML in this example with HTML::Template.
-You could change the HTTP headers (via header_type() and header_props()
+C<load_tmpl()> to replace the static HTML in this example with HTML::Template.
+You could change the HTTP headers (via C<header_type()> and C<header_props()>
 methods) to set up a redirect.  You could also use the objects properties
 to apply changes only under certain circumstance, such as a in only certain run
-modes, and when a param() is a particular value.
+modes, and when a C<param()> is a particular value.
 
 
 =item cgiapp_get_query()
@@ -1278,7 +1273,7 @@ will return undef.
     $webapp->header_add(-cookie=>[$extra_cookie]);
 
 The header_add() method is used to add one or more headers to the outgoing
-response headers.  The parameters will eventuallly be passed on to the CGI.pm
+response headers.  The parameters will eventually be passed on to the CGI.pm
 header() method, so refer to the L<CGI> docs for exact usage details.
 
 Unlike calling header_props(), header_add() will preserve any existing
@@ -1325,27 +1320,33 @@ the HTTP header properly.
 =item header_type([<'header' || 'redirect' || 'none'>])
 
     $webapp->header_type('redirect');
+    $webapp->header_type('none');
 
-The header_type() method expects to be passed either 'header', 'redirect', or 'none'.
-This method specifies the type of HTTP headers which should be sent back to
-the browser.  If not specified, defaults is 'header'.  See the
-header section of L<CGI> for details.
+This method used to declare that you are setting a redirection header,
+or that you want no header to be returned by the framework. 
 
-To perform a redirect using CGI::Application (and CGI.pm), you would
-do the following:
+The value of 'header' is almost never used, as it is the default. 
+
+B<Example of redirecting>:
 
   sub some_redirect_mode {
     my $self = shift;
-    my $new_url = "http://site/path/doc.html";
+    # do stuff here.... 
     $self->header_type('redirect');
-    $self->header_props(-url=>$new_url);
-    return "Redirecting to $new_url";
+    $self->header_props(-url=>  "http://site/path/doc.html" );
   }
 
-If you wish to suppress HTTP headers entirely (as might be the case if
-you're working in a slightly more exotic environment), you can set
-header_type() to "none".  This will completely hide headers.
+To simplify that further, you could use L<CGI::Application::Plugin::Redirect>,
+which provides this simplification:
 
+    return $self->redirect('http://www.example.com/');
+
+Setting the header to 'none' may be useful if you are streaming content.
+In other contexts, it may be more useful to set C<$ENV{CGI_APP_RETURN_ONLY} = 1;>,
+which supresses all printing, including headers, and returns the output instead.
+
+That's commonly used for testing, or when using L<CGI::Application> as a controller
+for a cron script!
 
 =item load_tmpl()
 
@@ -1417,7 +1418,7 @@ not a file. It features a simple syntax and MIME-type detection.
 
 B<The load_tmpl() callback>
 
-Plugin authors will be intersted to know that you can register a callback that
+Plugin authors will be interested to know that you can register a callback that
 will be executed just before load_tmpl() returns:
 
   $self->add_callback('load_tmpl',\&your_method);
@@ -1466,7 +1467,7 @@ sub load_tmpl {
     # Define our extension if doesn't already exist;
     $self->{__CURRENT_TMPL_EXTENSION} = '.html' unless defined $self->{__CURRENT_TMPL_EXTENSION};
 
-    # Define a default templat name based on the current run mode
+    # Define a default template name based on the current run mode
     unless (defined $tmpl_file) {
         $tmpl_file = $self->get_current_runmode . $self->{__CURRENT_TMPL_EXTENSION};    
     }
@@ -1559,7 +1560,7 @@ will be ahead of time and want to define it with JavaScript.
 
 B<More about $ENV{PATH_INFO}>.
 
-Using $ENV{PATH_INFO} to name your run mode creates a clean seperation between
+Using $ENV{PATH_INFO} to name your run mode creates a clean separation between
 the form variables you submit and how you determine the processing run mode. It
 also creates URLs that are more search engine friendly. Let's look at an
 example form submission using this syntax:
@@ -1572,7 +1573,7 @@ query string:
 
 	/cgi-bin/instance.cgi/edit_form?breed_id=2
 
-This demostrates that you can use $ENV{PATH_INFO} and a query string together
+This demonstrates that you can use $ENV{PATH_INFO} and a query string together
 without problems. $ENV{PATH_INFO} is defined as part of the CGI specification
 should be supported by any web server that supports CGI scripts.
 
@@ -1967,7 +1968,7 @@ L<CGI::Application::Plugin::Stream> - Help stream files to the browser
 
 L<CGI::Application::Plugin::TemplateRunner> - Allows for more of an ASP-style
 code structure, with the difference that code and HTML for each screen are in
-seperate files. 
+separate files. 
 
 =item *
 
@@ -2185,7 +2186,7 @@ sub call_hook {
 	# Next, run callbacks installed in class hierarchy
 
 	# Cache this value as a performance boost
-	$self->{__CALLBACK_CLASSES} ||=  [ $app_class->meta->class_precedence_list ];
+	$self->{__CALLBACK_CLASSES} ||=  [ Class::ISA::self_and_super_path($app_class) ];
 
 	# Get list of classes that the current app inherits from
 	foreach my $class (@{ $self->{__CALLBACK_CLASSES} }) {
