@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: CGI-Application
-version: 4.07_02
+version: 4.07_03
 author:
   - Jesse Erlbaum <jesse@erlbaum.net>
   - Mark Stosberg <mark@summersault.com>
@@ -16,7 +16,7 @@ requires:
 provides:
   CGI::Application:
     file: lib/CGI/Application.pm
-    version: 4.07_02
+    version: 4.07_03
   CGI::Application::Mailform:
     file: lib/CGI/Application/Mailform.pm
 generated_by: Module::Build version 0.2611

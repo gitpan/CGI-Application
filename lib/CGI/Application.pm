@@ -3,7 +3,7 @@ use Carp;
 use strict;
 use Class::ISA;
 
-$CGI::Application::VERSION = '4.07_02';
+$CGI::Application::VERSION = '4.07_03';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -44,7 +44,6 @@ sub new {
 	# Process optional new() parameters
 	my $rprops;
 	if (ref($args[0]) eq 'HASH') {
-		my $rthash = %{$args[0]};
 		$rprops = $self->_cap_hash($args[0]);
 	} else {
 		$rprops = $self->_cap_hash({ @args });
@@ -114,31 +113,33 @@ sub __get_runmeth {
 
 	my $rmeth;
 
+    my $is_autoload = 0;
+
 	my %rmodes = ($self->run_modes());
 	if (exists($rmodes{$rm})) {
 		$rmeth = $rmodes{$rm};
-	} else {
+	}
+    else {
 		# Look for run mode "AUTOLOAD" before dieing
 		unless (exists($rmodes{'AUTOLOAD'})) {
 			croak("No such run mode '$rm'");
 		}
 		$rmeth = $rmodes{'AUTOLOAD'};
+        $is_autoload = 1;
 	}
 
-	return $rmeth;
+	return ($rmeth, $is_autoload);
 }
 
 sub __get_body {
 	my $self  = shift;
 	my $rm    = shift;
 
-	my $rmeth = $self->__get_runmeth($rm);
+	my ($rmeth, $is_autoload) = $self->__get_runmeth($rm);
 
 	my $body;
 	eval {
-		# Prior to my refactoring, we only passed $rm to $rmeth if it was
-		# autoloaded.
-		$body = $self->$rmeth($rm);
+        $body = $is_autoload ? $self->$rmeth($rm) : $self->$rmeth();
 	};
 	if ($@) {
 		my $error = $@;
@@ -907,7 +908,7 @@ The new() method is the constructor for a CGI::Application.  It returns
 a blessed reference to your Application Module package (class).  Optionally,
 new() may take a set of parameters as key => value pairs:
 
-    my $webapp = App->new(
+    my $webapp = WebApp->new(
 		TMPL_PATH => 'App/',
 		PARAMS => {
 			'custom_thing_1' => 'some val',
@@ -1289,19 +1290,20 @@ been set.
 
     $webapp->header_props(-type=>'image/gif',-expires=>'+3d');
 
-The header_props() method expects a hash of CGI.pm-compatible
+The C<header_props()> method expects a hash of CGI.pm-compatible
 HTTP header properties.  These properties will be passed directly
-to CGI.pm's header() or redirect() methods.  Refer to L<CGI>
+to CGI.pm's C<header()> or C<redirect()> methods.  Refer to L<CGI>
 for exact usage details.
 
-Calling header_props will clobber any existing headers that have
+Calling header_props any arguments will clobber any existing headers that have
 previously set.
+
+C<header_props()> return a hash of all the headers that have currently been
+set. It can be called with no arguments just to get the hash current headers
+back.
 
 To add additional headers later without clobbering the old ones,
 see L<header_add()>.
-
-header_props() return a hash of all the headers that have currently
-been set.
 
 B<IMPORTANT NOTE REGARDING HTTP HEADERS>
 
