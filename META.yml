@@ -1,10 +1,10 @@
---- #YAML:1.0
+---
 name: CGI-Application
-version: 4.07_03
+version: 4.10
 author:
-  - Jesse Erlbaum <jesse@erlbaum.net>
-  - Mark Stosberg <mark@summersault.com>
-  - with the help of many others!
+  - 'Jesse Erlbaum <jesse@erlbaum.net>'
+  - 'Mark Stosberg <mark@summersault.com>'
+  - "with the help of many others!"
 abstract: Framework for building reusable web-applications
 license: perl
 requires:
@@ -13,10 +13,17 @@ requires:
   Class::ISA: 0
   HTML::Template: 0
   Test::More: 0.47
+generated_by: Module::Build version 0.2808
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2
+no_index:
+  file:
 provides:
   CGI::Application:
     file: lib/CGI/Application.pm
-    version: 4.07_03
+    version: 4.10
   CGI::Application::Mailform:
     file: lib/CGI/Application/Mailform.pm
-generated_by: Module::Build version 0.2611
+resources:
+  license: http://dev.perl.org/licenses/

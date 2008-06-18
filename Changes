@@ -1,4 +1,30 @@
-Revision history for Perl extension CGI::Application.
+Revision history for CGI::Application.
+
+4.10 Tue Jun 17, 2008
+
+    This release maintains the same API public from 4.06.  Changes since the
+    last stable release include documentation updates and refactors to the internal
+    of CGI::Application. 
+
+    [DOCUMENTATION]
+    Several documentation improvements (Mark Stosberg)
+    - Reformat POD so methods are easier browse on CPAN
+    - Highlight some specific, common plugins to use
+    - Mention that we now have two CGI::App specific testing tools to use
+      Test::WWW::Mechanize::CGIApp and Test::WWW::Selenium::CGIApp 
+    - Introduce and recommend CGI::Application::Dispatch 
+    - Consolidated the documentation on error_mode()
+    - Split out those application methods which are essential from
+      those that are not. 
+    - Use and recommend "$c" instead of "$self" to cut down on
+      typing for something that is abstract anyway, and represented
+      a simple "." in Perl 6.
+    - Mention CGI::Application::Server for offline website development.
+    - Update the introduction to clarify that we are a proven, lightweight
+      option.
+    - Removed the "experimental" flag on the error hook. 
+    - Mention in the second Perl.com article in the "more reading" section. 
+    - Document darcs repo URL. (Suggested by Gabor) 
 
 4.07_03 Mon Jun 16, 2008
 
