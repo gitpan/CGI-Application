@@ -2,17 +2,16 @@
 use ExtUtils::MakeMaker;
 WriteMakefile
 (
-          'PL_FILES' => {},
-          'INSTALLDIRS' => 'site',
           'NAME' => 'CGI::Application',
-          'EXE_FILES' => [],
           'VERSION_FROM' => 'lib/CGI/Application.pm',
           'PREREQ_PM' => {
-                           'Test::More' => '0.47',
-                           'HTML::Template' => 0,
-                           'Class::ISA' => 0,
-                           'CGI' => 0,
-                           'Carp' => 0
-                         }
+                           'CGI' => '0',
+                           'Carp' => '0',
+                           'Class::ISA' => '0',
+                           'HTML::Template' => '0',
+                           'Test::More' => '0.47'
+                         },
+          'INSTALLDIRS' => 'site',
+          'PL_FILES' => {}
         )
 ;
