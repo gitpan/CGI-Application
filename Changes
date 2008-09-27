@@ -1,5 +1,25 @@
 Revision history for CGI::Application.
 
+4.19_1 Fri Sep 27, 2008
+
+    [FEATURES]
+    - New 'html_tmpl_class' method allows you to specify an alternative
+      HTML::Template class. This technique will eliminate the need to use 
+      a plugin for HTML::Template-compatible classes. See the docs 
+      for load_tmpl() for details. 
+      
+      Thanks to Rhesa Rozendaal for the initial patch, and Mark Stosberg for
+      documentation refinements.
+
+    [DOCUMENTATION]
+    - typo fix (George Hartzell)
+    - Revert back to documenting the use of "$self", not $c, after community
+      feedback. 
+
+    [INTERNALS]
+    - Change how default run modes are declared for better compatibility
+      with AutoRunmode and RunmodeDeclare plugins. Thanks Rhesa via RT#39631.
+
 4.11 Sun Aug 10, 2008
     No code changes. 
 
