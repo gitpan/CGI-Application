@@ -3,7 +3,7 @@ use Carp;
 use strict;
 use Class::ISA;
 
-$CGI::Application::VERSION = '4.19_1';
+$CGI::Application::VERSION = '4.20';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -1908,7 +1908,7 @@ meaning that a local web-browser would be used, allowing testing of websites
 that contain JavaScript.
 
 Direct testing is also easy. CGI::Application will normally print the output of it's
-run modes directly to STDOUT. This can be surprised with an enviroment variable, 
+run modes directly to STDOUT. This can be suppressed with an enviroment variable, 
 CGI_APP_RETURN_ONLY. For example:
 
   $ENV{CGI_APP_RETURN_ONLY} = 1;
