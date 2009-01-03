@@ -3,7 +3,7 @@ use Carp;
 use strict;
 use Class::ISA;
 
-$CGI::Application::VERSION = '4.20';
+$CGI::Application::VERSION = '4.21';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -464,18 +464,14 @@ sub query {
 	my $self = shift;
 	my ($query) = @_;
 
-	# We're only allowed to set a new query object if one does not yet exist!
-	unless (exists($self->{__QUERY_OBJ})) {
-		my $new_query_obj;
-
-		# If data is provided, set it!  Otherwise, create a new one.
-		if (defined($query)) {
-			$new_query_obj = $query;
-		} else {
-			$new_query_obj = $self->cgiapp_get_query();
+	# If data is provided, set it!  Otherwise, create a new one.
+	if (defined($query)) {
+		$self->{__QUERY_OBJ} = $query;
+	} else {
+		# We're only allowed to create a new query object if one does not yet exist!
+		unless (exists($self->{__QUERY_OBJ})) {
+			$self->{__QUERY_OBJ} = $self->cgiapp_get_query();
 		}
-
-		$self->{__QUERY_OBJ} = $new_query_obj;
 	}
 
 	return $self->{__QUERY_OBJ};
@@ -1037,7 +1033,7 @@ CGI::Application.  The cgiapp_init() method receives, as its parameters,
 all the arguments which were sent to the new() method.
 
 An example of the benefits provided by utilizing this hook is
-creating a custom "application super-class" from which which all
+creating a custom "application super-class" from which all
 your web applications would inherit, instead of CGI::Application.
 
 Consider the following:
@@ -1165,13 +1161,13 @@ modes, and when a C<param()> is a particular value.
 Override this method to retrieve the query object if you wish to use a
 different query interface instead of CGI.pm.  
 
-CGI.pm is only loaded to provided query object is only loaded if it used on a given request.
+CGI.pm is only loaded if it is used on a given request.
 
 If you can use an alternative to CGI.pm, it needs to have some compatibility
 with the CGI.pm API. For normal use, just having a compatible C<param> method
 should be sufficient. 
 
-If use the C<path_info> option to the mode_param() method, then we will call
+If you use the C<path_info> option to the mode_param() method, then we will call
 the C<path_info()> method on the query object.
 
 If you use the C<Dump> method in CGI::Application, we will call the C<Dump> and
@@ -1345,6 +1341,12 @@ If, for some reason, you want to use your own CGI query object, the new()
 method supports passing in your existing query object on construction using
 the QUERY attribute.
 
+There are a few rare situations where you want your own query object to be 
+used after your Application Module has already been constructed. In that case 
+you can pass it to c<query()> like this:
+
+    $webapp->query($new_query_object);
+    my $q = $webapp->query(); # now uses $new_query_object
 
 =head3 run_modes()
 
