@@ -3,7 +3,7 @@ use Carp;
 use strict;
 use Class::ISA;
 
-$CGI::Application::VERSION = '4.32_1';
+$CGI::Application::VERSION = '4.50';
 
 my %INSTALLED_CALLBACKS = (
 #	hook name          package                 sub
@@ -214,6 +214,24 @@ sub run {
 	$self->call_hook('teardown');
 
 	return $return_value;
+}
+
+
+sub psgi_app {
+    my $class = shift;
+    my $args_to_new = shift;
+
+    return sub {
+        my $env = shift;
+
+        if (not defined $args_to_new->{QUERY}) {
+            require CGI::PSGI;
+            $args_to_new->{QUERY} = CGI::PSGI->new($env);
+        }
+
+        my $webapp = $class->new($args_to_new);
+        return $webapp->run_as_psgi;
+    }
 }
 
 sub run_as_psgi {
@@ -697,6 +715,10 @@ CGI::Application - Framework for building reusable web-applications
   my $webapp = WebApp->new();
   $webapp->run();
 
+  ### Or, in a PSGI file, webapp.psgi
+  use WebApp;
+  WebApp->psgi_app();
+
 =head1 INTRODUCTION
 
 CGI::Application makes it easier to create sophisticated, high-performance,
@@ -997,7 +1019,26 @@ data returned is print()'ed to STDOUT and to the browser.  If
 the specified mode is not found in the run_modes() table, run() will
 croak().
 
-=head3 run_as_psgi
+=head2 PSGI support
+
+CGI::Application offers native L<PSGI> support. The default query object
+for this is L<CGI::PSGI>, which simply wrappers CGI.pm to provide PSGI
+support to it.
+
+=head3 psgi_app()
+
+ $psgi_coderef = WebApp->psgi_app({ ... args to new() ... });
+
+The simplest way to create and return a PSGI-compatible coderef. Pass in
+arguments to a hashref just as would to new. This returns a PSGI-compatible
+coderef, using L<CGI:::PSGI> as the query object. To use a different query
+object, construct your own object using C<< run_as_psgi() >>, as shown below.
+
+It's possible that we'll change from CGI::PSGI to a different-but-compatible
+query object for PSGI support in the future, perhaps if CGI.pm adds native
+PSGI support.
+
+=head3 run_as_psgi()
 
  my $psgi_aref = $webapp->run_as_psgi;
 
@@ -1665,17 +1706,24 @@ been set.
 
 =head3 header_props()
 
-    $webapp->header_props(-type=>'image/gif',-expires=>'+3d');
+    # Set a complete set of headers
+    %set_headers = $webapp->header_props(-type=>'image/gif',-expires=>'+3d');
+
+    # clobber / reset all headers
+    %set_headers = $webapp->header_props({});
+
+    # Just retrieve the headers 
+    %set_headers = $webapp->header_props(); 
 
 The C<header_props()> method expects a hash of CGI.pm-compatible
 HTTP header properties.  These properties will be passed directly
-to CGI.pm's C<header()> or C<redirect()> methods.  Refer to L<CGI>
-for exact usage details.
+to the C<header()> or C<redirect()> methods of the query() object. Refer
+to the docs of your query object for details. (Be default, it's L<CGI>.pm).
 
-Calling header_props any arguments will clobber any existing headers that have
+Calling header_props with an empty hashref clobber any existing headers that have
 previously set.
 
-C<header_props()> return a hash of all the headers that have currently been
+C<header_props()> returns a hash of all the headers that have currently been
 set. It can be called with no arguments just to get the hash current headers
 back.
 
@@ -2418,10 +2466,9 @@ some people involved with the project there.
 
 B<Source Code>
 
-This project is managed using the darcs source control system (
-http://www.darcs.net/ ). The darcs archive is here:
-http://mark.stosberg.com/darcs_hive/cgi-app
+This project is managed using git and is available on Github:
 
+    https://github.com/markstos/CGI--Application
 
 =head1 SEE ALSO
 
